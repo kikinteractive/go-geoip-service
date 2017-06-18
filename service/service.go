@@ -23,7 +23,7 @@ type Location struct {
 }
 
 // Response is a struct that holds the data for the JSON HTTP response body.
-type Response struct {
+type LookupResponse struct {
 	CountryCode   string   `json:"country_code"`
 	Country       string   `json:"country"`
 	RegionCode    *string  `json:"region_code"`
@@ -33,8 +33,10 @@ type Response struct {
 	Location      Location `json:"location"`
 }
 
+type MultiLookupResponse map[string]interface{}
+
 // LookupIP looks up the specified IP in the loaded Maxmind DB
-func LookupIP(ip string) (*Response, error) {
+func LookupIP(ip string) (*LookupResponse, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -52,7 +54,7 @@ func LookupIP(ip string) (*Response, error) {
 		return nil, err
 	}
 
-	response := &Response{
+	response := &LookupResponse{
 		CountryCode:   record.Country.IsoCode,
 		Country:       record.Country.Names["en"],
 		City:          record.City.Names["en"],
@@ -69,6 +71,20 @@ func LookupIP(ip string) (*Response, error) {
 	}
 
 	return response, nil
+}
+
+func MultiLookupIP(ips []string) (*MultiLookupResponse, error) {
+	response := make(MultiLookupResponse)
+
+	// TODO run this in parallel goroutines
+	for _, ip := range ips {
+		res, err := LookupIP(ip)
+		if err == nil {
+			response[ip] = res
+		}
+	}
+
+	return &response, nil
 }
 
 // LoadMaxmindDB loads a MaxMind DB into memory for use by the /lookup endpoint.

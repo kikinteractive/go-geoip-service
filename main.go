@@ -15,6 +15,22 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
+type IpList struct {
+	Ips []string `json:"ips"`
+}
+
+func writeErrorResponse(err error, w http.ResponseWriter) {
+	resp := errorResponse{Error: err.Error()}
+
+	bytes, jsonErr := json.Marshal(resp)
+	if jsonErr != nil {
+		log.Fatal(jsonErr)
+	}
+
+	w.WriteHeader(http.StatusInternalServerError)
+	io.WriteString(w, string(bytes))
+}
+
 func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -22,15 +38,33 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 
 	record, err := service.LookupIP(ip)
 	if err != nil {
-		resp := errorResponse{Error: err.Error()}
+		writeErrorResponse(err, w)
+		return
+	}
 
-		bytes, jsonErr := json.Marshal(resp)
-		if jsonErr != nil {
-			log.Fatal(jsonErr)
-		}
+	bytes, err := json.Marshal(record)
+	if err != nil {
+		log.Fatal(err)
+	}
+	io.WriteString(w, string(bytes))
+}
 
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, string(bytes))
+func multiLookupHandler(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	decoder := json.NewDecoder(req.Body)
+	defer req.Body.Close()
+
+	var ips IpList
+	err := decoder.Decode(&ips)
+	if err != nil {
+		writeErrorResponse(err, w)
+		return
+	}
+
+	record, err := service.MultiLookupIP(ips.Ips)
+	if err != nil {
+		writeErrorResponse(err, w)
 		return
 	}
 
@@ -65,5 +99,6 @@ func main() {
 	log.Println("Listening on 0.0.0.0:" + stringPort)
 
 	http.HandleFunc("/lookup", lookupHandler)
+	http.HandleFunc("/multi-lookup", multiLookupHandler)
 	log.Fatal(http.ListenAndServe(":"+stringPort, nil))
 }

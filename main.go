@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/dseevr/go-geoip-service/service"
+	"github.com/kikinteractive/go-geoip-service/service"
 )
 
 type errorResponse struct {

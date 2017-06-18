@@ -17,9 +17,20 @@ func init() {
 	loaded = false
 }
 
+type Location struct {
+	Lat float64 `json:"lat"`
+	Lon float64 `json:"lon"`
+}
+
 // Response is a struct that holds the data for the JSON HTTP response body.
 type Response struct {
-	Country string `json:"country"`
+	CountryCode   string   `json:"country_code"`
+	Country       string   `json:"country"`
+	RegionCode    *string  `json:"region_code"`
+	City          string   `json:"city"`
+	ContinentCode string   `json:"continent_code"`
+	Continent     string   `json:"continent"`
+	Location      Location `json:"location"`
 }
 
 // LookupIP looks up the specified IP in the loaded Maxmind DB
@@ -42,7 +53,19 @@ func LookupIP(ip string) (*Response, error) {
 	}
 
 	response := &Response{
-		Country: record.Country.IsoCode,
+		CountryCode:   record.Country.IsoCode,
+		Country:       record.Country.Names["en"],
+		City:          record.City.Names["en"],
+		ContinentCode: record.Continent.Code,
+		Continent:     record.Continent.Names["en"],
+		Location: Location{
+			Lat: record.Location.Latitude,
+			Lon: record.Location.Longitude,
+		},
+	}
+
+	if len(record.Subdivisions) > 0 {
+		response.RegionCode = &record.Subdivisions[0].IsoCode
 	}
 
 	return response, nil

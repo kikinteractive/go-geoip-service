@@ -32,13 +32,24 @@ docker run --rm -it \
 ## Looking up an IP
 
 ```
-curl -w "\n" "http://localhost:12345/lookup?ip=1.2.3.4"
+curl -s 'http://localhost:12345/lookup?ip=109.111.96.0'
 ```
 
 Response:
 
 ```json
-{"country":"AU"}
+{
+  "country_code": "AD",
+  "country": "Andorra",
+  "region_code": "07",
+  "city": "Andorra la Vella",
+  "continent_code": "EU",
+  "continent": "Europe",
+  "location": {
+    "lat": 42.5,
+    "lon": 1.5167000000000002
+  }
+}
 ```
 
 ## Prerequisites

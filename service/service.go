@@ -102,8 +102,6 @@ func LoadMaxmindDB(path string) {
 		log.Fatal(err)
 	}
 
-	log.Println("Loaded Maxmind DB from " + path)
-
 	mmdb = db
 	loaded = true
 }
@@ -116,8 +114,6 @@ func UnloadMaxmindDB() {
 	if !loaded {
 		return
 	}
-
-	log.Println("Unloaded MaxMind DB")
 
 	mmdb.Close()
 	loaded = false

@@ -1,104 +1,75 @@
 package main
 
 import (
-	"encoding/json"
+	"bufio"
+	"encoding/csv"
 	"flag"
+	"fmt"
 	"io"
 	"log"
-	"net/http"
-	"strconv"
+	"os"
 
 	"github.com/kikinteractive/go-geoip-service/service"
 )
 
-type errorResponse struct {
-	Error string `json:"error"`
+const IP_LOC = 7
+
+func GetIps(csvPath string, ipChan chan<- string, endChan chan<- bool) {
+	// Load a TXT file.
+	f, _ := os.Open(csvPath)
+
+	// Create a new reader.
+	r := csv.NewReader(bufio.NewReader(f))
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		ip := record[IP_LOC]
+		ipChan <- ip
+	}
+	endChan <- true
 }
 
-type IpList struct {
-	Ips []string `json:"ips"`
-}
+func ResolveIps(ipChan <-chan string, endChan <-chan bool) {
 
-func writeErrorResponse(err error, w http.ResponseWriter) {
-	resp := errorResponse{Error: err.Error()}
-
-	bytes, jsonErr := json.Marshal(resp)
-	if jsonErr != nil {
-		log.Fatal(jsonErr)
+	for {
+		select {
+		case ip := <-ipChan:
+			record, err := service.LookupIP(ip)
+			if err == nil {
+				regionCode := ""
+				if record.RegionCode != nil {
+					regionCode = *record.RegionCode
+				}
+				fmt.Printf("%v,%v,%v,%v,%v,%v,%v\n", ip, record.ContinentCode, record.CountryCode, regionCode, record.City, record.Location.Lat, record.Location.Lon)
+			}
+		case <-endChan:
+			return
+		}
 	}
-
-	w.WriteHeader(http.StatusInternalServerError)
-	io.WriteString(w, string(bytes))
-}
-
-func lookupHandler(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	ip := req.URL.Query().Get("ip")
-
-	record, err := service.LookupIP(ip)
-	if err != nil {
-		writeErrorResponse(err, w)
-		return
-	}
-
-	bytes, err := json.Marshal(record)
-	if err != nil {
-		log.Fatal(err)
-	}
-	io.WriteString(w, string(bytes))
-}
-
-func multiLookupHandler(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	decoder := json.NewDecoder(req.Body)
-	defer req.Body.Close()
-
-	var ips IpList
-	err := decoder.Decode(&ips)
-	if err != nil {
-		writeErrorResponse(err, w)
-		return
-	}
-
-	record, err := service.MultiLookupIP(ips.Ips)
-	if err != nil {
-		writeErrorResponse(err, w)
-		return
-	}
-
-	bytes, err := json.Marshal(record)
-	if err != nil {
-		log.Fatal(err)
-	}
-	io.WriteString(w, string(bytes))
 }
 
 func main() {
 	var dbPath string
-	var port int
+	var csvPath string
 
 	flag.StringVar(&dbPath, "db-path", "", "path to MaxMind GeoLite2 database")
-	flag.IntVar(&port, "port", 12345, "http port to listen on")
+	flag.StringVar(&csvPath, "csv-path", "", "path to csv file")
 	flag.Parse()
 
 	if 0 == len(dbPath) {
 		log.Fatalln("you must specify a --db-path")
 	}
 
-	// TODO: allow port 0? not sure if it's worth it
-	if port < 1 || port > 65535 {
-		log.Fatalln("--port must be >= 1 and <= 65535")
+	if 0 == len(csvPath) {
+		log.Fatalln("you must specify a --csv-path")
 	}
 
 	service.LoadMaxmindDB(dbPath)
 
-	stringPort := strconv.Itoa(port)
-
-	log.Println("Listening on 0.0.0.0:" + stringPort)
-
-	http.HandleFunc("/lookup", lookupHandler)
-	http.HandleFunc("/multi-lookup", multiLookupHandler)
-	log.Fatal(http.ListenAndServe(":"+stringPort, nil))
+	ipChan := make(chan string)
+	endChan := make(chan bool)
+	go GetIps(csvPath, ipChan, endChan)
+	ResolveIps(ipChan, endChan)
 }

@@ -4,58 +4,53 @@ import (
 	"bufio"
 	"encoding/csv"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/kikinteractive/go-geoip-service/service"
 )
 
-const IP_LOC = 7
+func FloatToString(f float64) string {
+	return strconv.FormatFloat(f, 'f', 4, 64)
+}
 
-func GetIps(csvPath string, ipChan chan<- string, endChan chan<- bool) {
-	// Load a TXT file.
-	f, _ := os.Open(csvPath)
+func GetIps(input string, output string, ipLoc uint8) {
+	fin, _ := os.Open(input)
+	r := csv.NewReader(bufio.NewReader(fin))
 
-	// Create a new reader.
-	r := csv.NewReader(bufio.NewReader(f))
+	fout, _ := os.Create(output)
+	w := csv.NewWriter(bufio.NewWriter(fout))
+	defer w.Flush()
+
 	for {
-		record, err := r.Read()
+		row, err := r.Read()
 		if err == io.EOF {
 			break
 		}
-		ip := record[IP_LOC]
-		ipChan <- ip
-	}
-	endChan <- true
-}
+		ip := row[ipLoc]
 
-func ResolveIps(ipChan <-chan string, endChan <-chan bool) {
-
-	for {
-		select {
-		case ip := <-ipChan:
-			record, err := service.LookupIP(ip)
-			if err == nil {
-				regionCode := ""
-				if record.RegionCode != nil {
-					regionCode = *record.RegionCode
-				}
-				fmt.Printf("%v,%v,%v,%v,%v,%v,%v\n", ip, record.ContinentCode, record.CountryCode, regionCode, record.City, record.Location.Lat, record.Location.Lon)
+		record, err := service.LookupIP(ip)
+		if err == nil {
+			regionCode := ""
+			if record.RegionCode != nil {
+				regionCode = *record.RegionCode
 			}
-		case <-endChan:
-			return
+			row = append(row, record.ContinentCode, record.CountryCode, regionCode, record.City, FloatToString(record.Location.Lat), FloatToString(record.Location.Lon))
 		}
+		w.Write(row)
 	}
 }
 
 func main() {
 	var dbPath string
 	var csvPath string
+	var outPath string
 
 	flag.StringVar(&dbPath, "db-path", "", "path to MaxMind GeoLite2 database")
 	flag.StringVar(&csvPath, "csv-path", "", "path to csv file")
+	flag.StringVar(&outPath, "out-path", "", "path to out file")
 	flag.Parse()
 
 	if 0 == len(dbPath) {
@@ -66,10 +61,11 @@ func main() {
 		log.Fatalln("you must specify a --csv-path")
 	}
 
+	if 0 == len(outPath) {
+		log.Fatalln("you must specify a --out-path")
+	}
+
 	service.LoadMaxmindDB(dbPath)
 
-	ipChan := make(chan string)
-	endChan := make(chan bool)
-	go GetIps(csvPath, ipChan, endChan)
-	ResolveIps(ipChan, endChan)
+	GetIps(csvPath, outPath, 7)
 }
